@@ -51,7 +51,23 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item tip-tauri/src-tauri/target/release/tip-tauri.exe dist/ImTipLite.exe
-          Copy-Item tip-tauri/src-tauri/target/release/WebView2Loader.dll dist/WebView2Loader.dll
+
+          # GNU 工具链会把 WebView2Loader.dll 复制到 target/release/,
+          # 而 MSVC 默认静态链接该加载器, 不会产生 DLL。两处都找一下。
+          $candidates = @()
+          $candidates += 'tip-tauri/src-tauri/target/release/WebView2Loader.dll'
+          $candidates += Get-ChildItem -Path tip-tauri/src-tauri/target/release/build `
+                          -Recurse -Filter WebView2Loader.dll -ErrorAction SilentlyContinue |
+                        Where-Object { $_.FullName -match 'x64' } |
+                        Select-Object -First 1 -ExpandProperty FullName
+          $dll = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if ($dll) {
+            Copy-Item $dll dist/WebView2Loader.dll
+            Write-Output "staged WebView2Loader.dll <- $dll"
+          } else {
+            Write-Output "no WebView2Loader.dll (MSVC build links it statically)"
+          }
+          Get-ChildItem dist | Format-Table Name, Length | Out-String | Write-Output
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -63,6 +79,4 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/ImTipLite.exe
-            dist/WebView2Loader.dll
+          files: dist/*
