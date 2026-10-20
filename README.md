@@ -3,7 +3,7 @@
 复刻 [ImTip](https://github.com/aardio/ImTip) 的「输入法状态光标跟随提示」。
 Tauri 2(设置界面) + Rust 原生 Win32/GDI+ 提示条。单实例运行。
 
-[![build](https://github.com/OWNER/ImTipLite/actions/workflows/build.yml/badge.svg)](https://github.com/OWNER/ImTipLite/actions/workflows/build.yml)
+[![build](https://github.com/wenxiang96/ImTipLite/actions/workflows/build.yml/badge.svg)](https://github.com/wenxiang96/ImTipLite/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## 直接使用(绿色版)
