@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="styles.css" />
+  <title>ImTipLite 设置</title>
+  <script type="module" src="/main.js" defer></script>
+</head>
+<body>
+<main class="settings">
+  <header class="header">
+    <div class="identity">
+      <span class="app-icon">中</span>
+      <span class="app-name">ImTip<span>Lite</span></span>
+      <span class="subtitle">输入状态提示</span>
+    </div>
+    <div class="header-actions">
+      <span id="saved" class="save-status" aria-live="polite"></span>
+      <button class="reset" id="reset" type="button">恢复默认</button>
+    </div>
+  </header>
+
+  <section class="preview-panel">
+    <div class="panel-title"><div><strong>悬浮效果</strong><small>预览与实际提示使用相同渲染</small></div><span class="live"><i></i>实时</span></div>
+    <div class="preview-strip">
+      <div class="preview-sample"><img id="pv_full" alt="中文全角预览"><span>中文 · 全角</span></div>
+      <div class="preview-sample"><img id="pv_half" alt="英文半角预览"><span>英文 · 半角</span></div>
+      <div class="preview-sample"><img id="pv_caps" alt="大写预览"><span>中文 · 大写占第二格</span></div>
+    </div>
+  </section>
+
+  <div class="columns">
+    <section class="panel">
+      <div class="panel-title"><div><strong>显示行为</strong><small>控制提示出现的条件</small></div></div>
+      <div class="switch-list">
+        <label class="switch-row"><span><b>暂停提示</b><small>暂时停止显示状态提示</small></span><input type="checkbox" id="paused"><i></i></label>
+        <label class="switch-row"><span><b>状态变化时提示</b><small>切换输入目标或中英状态时显示</small></span><input type="checkbox" id="show_on_change"><i></i></label>
+        <label class="switch-row"><span><b>鼠标位置兜底</b><small>无法获取文本光标时跟随鼠标</small></span><input type="checkbox" id="follow_mouse"><i></i></label>
+        <label class="switch-row"><span><b>透明背景</b><small>只显示状态字符，不绘制底色</small></span><input type="checkbox" id="transparent_bg"><i></i></label>
+        <label class="switch-row"><span><b>开机自启</b><small>登录 Windows 后自动启动</small></span><input type="checkbox" id="autostart"><i></i></label>
+        <label class="switch-row"><span><b>忽略全屏</b><small>全屏游戏或视频时隐藏提示</small></span><input type="checkbox" id="ignore_fullscreen"><i></i></label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><div><strong>跟踪与位置</strong><small>设置提示停留和光标偏移</small></div></div>
+      <div class="range-row"><div><label for="timeout">提示停留时长</label><output><b id="timeout_v">3.0</b> 秒</output></div><input type="range" id="timeout" min="0.5" max="10" step="0.1"></div>
+      <div class="range-row"><div><label for="poll_interval">检测间隔</label><output><b id="poll_v">50</b> ms</output></div><input type="range" id="poll_interval" min="16" max="200" step="1"></div>
+      <div class="range-row"><div><label for="offset_x">水平偏移</label><output><b id="ox_v">14</b> px</output></div><input type="range" id="offset_x" min="-40" max="80" step="1"></div>
+      <div class="range-row"><div><label for="offset_y">垂直偏移</label><output><b id="oy_v">2</b> px</output></div><input type="range" id="offset_y" min="-40" max="80" step="1"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><div><strong>外观尺寸</strong><small>字体、尺寸、透明度</small></div></div>
+      <div class="range-row"><div><label for="font_size">字体大小</label><output><b id="font_size_v">17</b> px</output></div><input type="range" id="font_size" min="9" max="48" step="1"></div>
+      <div class="range-row"><div><label for="cell_w">单格宽度</label><output><b id="cell_w_v">26</b> px</output></div><input type="range" id="cell_w" min="14" max="80" step="1"></div>
+      <div class="range-row"><div><label for="height">提示高度</label><output><b id="height_v">30</b> px</output></div><input type="range" id="height" min="16" max="90" step="1"></div>
+      <div class="range-row"><div><label for="radius">圆角大小</label><output><b id="radius_v">9</b> px</output></div><input type="range" id="radius" min="0" max="45" step="1"></div>
+      <div class="range-row"><div><label for="border_width">边框粗细</label><output><b id="border_width_v">0</b> px</output></div><input type="range" id="border_width" min="0" max="8" step="1"></div>
+      <div class="range-row"><div><label for="alpha">背景不透明度</label><output><b id="alpha_v">235</b> / 255</output></div><input type="range" id="alpha" min="60" max="255" step="1"></div>
+      <label class="font-row"><span>字体</span><input type="text" id="font_name" list="fonts" spellcheck="false" placeholder="选择或输入字体"></label>
+      <datalist id="fonts"><option>Microsoft YaHei UI</option><option>微软雅黑</option><option>Segoe UI</option><option>Consolas</option><option>SimHei</option><option>KaiTi</option></datalist>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><div><strong>状态颜色</strong><small>点击色块自定义颜色</small></div></div>
+      <div class="color-grid">
+        <label class="color-item"><input type="color" id="color_bg"><span>背景</span></label>
+        <label class="color-item"><input type="color" id="color_border"><span>边框</span></label>
+        <label class="color-item"><input type="color" id="color_cn"><span>中文</span></label>
+        <label class="color-item"><input type="color" id="color_en"><span>英文</span></label>
+        <label class="color-item"><input type="color" id="color_full"><span>全角</span></label>
+        <label class="color-item"><input type="color" id="color_half"><span>半角</span></label>
+        <label class="color-item"><input type="color" id="color_caps"><span>大写</span></label>
+      </div>
+      <div class="panel-title chars-title"><div><strong>显示字符</strong><small>提示最多两格；大写时占用第二格</small></div></div>
+      <div class="char-grid">
+        <label><span>中文</span><input type="text" id="char_cn" maxlength="4"></label>
+        <label><span>英文</span><input type="text" id="char_en" maxlength="4"></label>
+        <label><span>全角</span><input type="text" id="char_full" maxlength="4"></label>
+        <label><span>半角</span><input type="text" id="char_half" maxlength="4"></label>
+        <label><span>大写</span><input type="text" id="char_caps" maxlength="4"></label>
+        <label><span>其他语言</span><input type="text" id="char_other" maxlength="4"></label>
+      </div>
+    </section>
+  </div>
+  <footer>设置自动保存 · 单击托盘图标可打开本窗口</footer>
+</main>
+</body>
+</html>
