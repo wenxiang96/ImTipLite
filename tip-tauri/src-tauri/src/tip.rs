@@ -330,11 +330,12 @@ unsafe fn caret_screen(gti: &GUITHREADINFO) -> Option<(i32, i32, i32)> {
 }
 /// 提示条最多两格(总共最多两格):
 ///   第 1 格 = 中文 / 英文(中文模式显示“中”, 英文模式显示“英”)
-///   第 2 格 = 全角 / 半角; **仅英文模式**且 CapsLock 开启时改为大写 A
+///   第 2 格 = 全角 / 半角; **CapsLock 开启时**(中英模式都算)改为大写 A
 ///
-/// 为什么中文模式不显示 A: 中文没有大小写, CapsLock 对中文输入没有任何影响,
-/// 在“中”旁边显示 A 属于误导。这与早期 imtip_lite.py / imtip-rs 的
-/// `if caps and not is_cn` 行为一致(重写为 Tauri 版时该条件被误删)。
+/// 注意: 这里刻意不加 `!is_cn`。中文模式同样要显示 A —— 用户按下 CapsLock 就想
+/// 知道自己处在大写锁定状态, 与当前是中文还是英文无关。
+/// (早期 imtip_lite.py / imtip-rs 用的 `caps && !is_cn` 会让中文模式下永远看不到 A,
+/// 属于旧行为, 不要照抄。)
 pub fn build_glyphs(is_cn: bool, symbol: i32, lang: u32, caps: i32, cfg: &Config) -> Vec<(String, (u8, u8, u8))> {
     let c_cn = parse_color(&cfg.color_cn, COLOR_CN);
     let c_en = parse_color(&cfg.color_en, COLOR_EN);
@@ -355,8 +356,8 @@ pub fn build_glyphs(is_cn: bool, symbol: i32, lang: u32, caps: i32, cfg: &Config
         (cfg.char_other.clone(), c_en)
     };
     if !t1.is_empty() { cells.push((t1, c1)); }
-    // 第 2 格: 英文模式下 CapsLock 优先显示 A; 中文模式 / 未开启时显示全角 / 半角
-    let (t2, c2) = if caps != 0 && !is_cn {
+    // 第 2 格: CapsLock 开启时优先显示 A(不限中英); 否则显示全角 / 半角
+    let (t2, c2) = if caps != 0 {
         let tc = if cfg.char_caps.is_empty() { "A".to_string() } else { cfg.char_caps.clone() };
         (tc, c_caps)
     } else if symbol == 1 {

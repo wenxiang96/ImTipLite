@@ -64,17 +64,20 @@ function Probe($label) {
     $isCn=$Matches[1]; $sym=$Matches[2]; $lang=$Matches[3]; $caps=$Matches[4]
     $mode = if ($isCn -eq 'true') { '中文' } else { '英文' }
     $g1 = if ($isCn -eq 'true') { '中' } else { '英' }
-    $g2 = if ($caps -eq '1' -and $isCn -eq 'false') { 'A' } else { if ($sym -eq '2') {'。'} else {'·'} }
+    $g2 = if ($caps -eq '1') { 'A' } else { if ($sym -eq '2') {'。'} else {'·'} }
     Write-Output ("{0,-12} 系统 caps={1} -> is_cn={2}({3}) symbol={4} caps_used={5}  ==> 显示 [{6}] [{7}]" -f $label,[C]::Caps(),$isCn,$mode,$sym,$caps,$g1,$g2)
   } else { Write-Output ("{0,-12} 无 trigger 行" -f $label) }
-  # 断言: 只有"英文模式 + caps on"才允许出现 A
-  $expectA = ($isCn -eq 'false' -and $caps -eq '1')
+  # 断言: caps on 就必须出现 A(不分中英)
+  $expectA = ($caps -eq '1')
   $gotA    = ($g2 -eq 'A')
   if ($expectA -ne $gotA) {
     Write-Output ("    !! FAIL 期望A={0} 实际A={1}" -f $expectA, $gotA)
     $script:failed = $true
   } else {
     Write-Output ("    ok  (期望A={0} 实际A={1})" -f $expectA, $gotA)
+  }
+  if (Test-Path (Join-Path $env:TEMP 'imtip_dump.bmp')) {
+    Copy-Item (Join-Path $env:TEMP 'imtip_dump.bmp') (Join-Path $root ("_caps_" + $label + ".bmp")) -Force
   }
   Start-Sleep -Milliseconds 300
 }
