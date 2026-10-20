@@ -50,23 +50,35 @@ fn main() {
         let scale = tip::dpi_scale_static();
 
         // 覆盖全部字形: 中 / 英 / 全角(。) / 半角(·) / 大写 A / 非中日韩(En)
-        let cases: Vec<(&str, bool, i32, u32, i32)> = vec![
-            ("中文+全角", true, 2, 0x0804, 0),
-            ("中文+半角", true, 1, 0x0804, 0),
-            ("中文+Caps", true, 2, 0x0804, 1),
-            ("英文+半角", false, 1, 0x0804, 0),
-            ("英文+全角", false, 2, 0x0804, 0),
-            ("英文+Caps", false, 1, 0x0804, 1),
-            ("非中文布局", false, 1, 0x0409, 0),
+        // 第 5 个元素 = 期望的第 2 格文字, 用于锁定“中文模式不显示 A”这条规则。
+        let cases: Vec<(&str, bool, i32, u32, i32, &str)> = vec![
+            ("中文+全角", true, 2, 0x0804, 0, "。"),
+            ("中文+半角", true, 1, 0x0804, 0, "·"),
+            // CapsLock 开, 但中文没有大小写: 仍应显示全角句号, 而不是 A
+            ("中文+Caps", true, 2, 0x0804, 1, "。"),
+            ("中文+Caps+半角", true, 1, 0x0804, 1, "·"),
+            ("英文+半角", false, 1, 0x0804, 0, "·"),
+            ("英文+全角", false, 2, 0x0804, 0, "。"),
+            // 英文模式 CapsLock 开: 第 2 格改为 A
+            ("英文+Caps", false, 1, 0x0804, 1, "A"),
+            ("非中文布局", false, 1, 0x0409, 0, "·"),
         ];
 
         let mut failures = Vec::new();
         println!("DPI scale = {:.2}", scale);
-        for (tag, is_cn, symbol, lang, caps) in cases {
+        for (tag, is_cn, symbol, lang, caps, want2) in cases {
             let cells = build_glyphs(is_cn, symbol, lang, caps, &cfg);
             if cells.is_empty() || cells.len() > 2 {
                 failures.push(format!("{}: 单元格数量 {} 不符合 1..=2", tag, cells.len()));
                 continue;
+            }
+            // 第 2 格文字必须与期望一致(这条锁住 CapsLock/中英模式的语义)
+            if cells.len() < 2 || cells[1].0 != want2 {
+                failures.push(format!(
+                    "{}: 第 2 格应为 {:?}, 实际 {:?}",
+                    tag, want2,
+                    cells.get(1).map(|c| c.0.clone()).unwrap_or_else(|| "<无>".into())
+                ));
             }
             let (w, h) = tip_size(&cfg, cells.len() as i32);
             let buf = match rasterize_tip(w, h, &cfg, &cells) {

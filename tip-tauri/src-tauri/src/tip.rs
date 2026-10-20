@@ -32,15 +32,14 @@ use windows_sys::Win32::UI::Shell::{
     Shell_NotifyIconW, NOTIFYICONDATAW, NIM_ADD, NIM_DELETE, NIF_ICON, NIF_MESSAGE, NIF_TIP,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, GetKeyboardLayout, VK_CAPITAL,
+    GetAsyncKeyState, GetKeyboardLayout, GetKeyState, VK_CAPITAL,
 };
 use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
+use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows_sys::Win32::System::Registry::{
     RegCloseKey, RegDeleteValueW, RegOpenKeyExW, RegQueryValueExW, RegSetValueExW,
     HKEY, HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_SET_VALUE, REG_SZ,
 };
-use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
-
 #[link(name = "imm32")]
 extern "system" {
     fn ImmGetDefaultIMEWnd(hwnd: isize) -> isize;
@@ -331,8 +330,11 @@ unsafe fn caret_screen(gti: &GUITHREADINFO) -> Option<(i32, i32, i32)> {
 }
 /// 提示条最多两格(总共最多两格):
 ///   第 1 格 = 中文 / 英文(中文模式显示“中”, 英文模式显示“英”)
-///   第 2 格 = 全角 / 半角; CapsLock 开启时改为大写 A
-/// 中文模式统一按全角、英文模式统一按半角处理(detect_state 已归一化 symbol)。
+///   第 2 格 = 全角 / 半角; **仅英文模式**且 CapsLock 开启时改为大写 A
+///
+/// 为什么中文模式不显示 A: 中文没有大小写, CapsLock 对中文输入没有任何影响,
+/// 在“中”旁边显示 A 属于误导。这与早期 imtip_lite.py / imtip-rs 的
+/// `if caps and not is_cn` 行为一致(重写为 Tauri 版时该条件被误删)。
 pub fn build_glyphs(is_cn: bool, symbol: i32, lang: u32, caps: i32, cfg: &Config) -> Vec<(String, (u8, u8, u8))> {
     let c_cn = parse_color(&cfg.color_cn, COLOR_CN);
     let c_en = parse_color(&cfg.color_en, COLOR_EN);
@@ -353,8 +355,8 @@ pub fn build_glyphs(is_cn: bool, symbol: i32, lang: u32, caps: i32, cfg: &Config
         (cfg.char_other.clone(), c_en)
     };
     if !t1.is_empty() { cells.push((t1, c1)); }
-    // 第 2 格: CapsLock 优先显示 A, 否则全角 / 半角
-    let (t2, c2) = if caps != 0 {
+    // 第 2 格: 英文模式下 CapsLock 优先显示 A; 中文模式 / 未开启时显示全角 / 半角
+    let (t2, c2) = if caps != 0 && !is_cn {
         let tc = if cfg.char_caps.is_empty() { "A".to_string() } else { cfg.char_caps.clone() };
         (tc, c_caps)
     } else if symbol == 1 {
@@ -425,9 +427,38 @@ impl App {
     }
     fn snap(&self) -> Config { self.cfg.lock().unwrap().clone() }
 
-    /// CapsLock 状态(钩子维护, 读取零开销)
+    /// CapsLock 开关状态(实时向系统查询, 不维护副本)
+    ///
+    /// 为什么不用钩子翻转的 AtomicBool:
+    ///   1. 启动时 init_caps() 可能静默失败(前台窗口属于本进程 / AttachThreadInput 被拒),
+    ///      此时基准值恒为 false, 之后每次显示都是反的;
+    ///   2. 一旦漏掉 CapsLock 的 keyup(焦点切换 / 其他钩子吞键 / 远程桌面),
+    ///      去重标志 CAPS_HELD 会永久卡在 true, 后续按 CapsLock 再也不会翻转。
+    ///
+    /// 为什么不用 `GetAsyncKeyState & 1`:
+    ///   该位是"自上次调用以来是否按过", 读一次就被消费掉, 不是稳定的开关状态。
+    ///   实测不同进程读同一时刻会交替拿到 1 / 0, 是典型的漏判来源。
+    ///
+    /// 正确做法: 附着前台线程输入队列后读 `GetKeyState`(低位 = 切换状态)。
+    /// 临时附着、读完立即脱离, 不会持续挂住前台队列, 不影响前台响应速度。
     unsafe fn caps_state(&mut self) -> i32 {
-        if CAPS_ON.load(Ordering::Relaxed) { 1 } else { 0 }
+        let fg = GetForegroundWindow();
+        if fg != 0 {
+            let tid = GetWindowThreadProcessId(fg, std::ptr::null_mut());
+            let me = GetCurrentThreadId();
+            if tid != 0 && tid != me {
+                if AttachThreadInput(me, tid, 1) != 0 {
+                    let r = GetKeyState(VK_CAPITAL as i32) & 1;
+                    AttachThreadInput(me, tid, 0);
+                    return r as i32;
+                }
+            } else if tid == me {
+                // 前台窗口属于本进程: 无需附着, 直接读
+                return (GetKeyState(VK_CAPITAL as i32) & 1) as i32;
+            }
+        }
+        // 附着失败(极罕见): 退回异步查询, 至少不会永久性错误
+        (GetAsyncKeyState(VK_CAPITAL as i32) & 1) as i32
     }
 
     unsafe fn hide_tip(&mut self) {
@@ -633,7 +664,7 @@ impl App {
             None => return,
         };
         let (is_cn, symbol, lang, _conv) = st;
-        let caps = self.caps_state(); // 中文模式下大写也显示
+        let caps = self.caps_state(); // 仅英文模式参与显示(见 build_glyphs)
         let mut caret = caret_screen(&gti);
         let mut mouse_live = false; // 位置是否来自真实鼠标指针(用于跟随续期)
         if caret.is_none() {
@@ -1324,11 +1355,9 @@ pub fn preview_data_urls(cfg: &Config) -> Vec<String> {
 static mut APP: Option<App> = None;
 thread_local! { static IN_CALL: Cell<bool> = const { Cell::new(false) }; }
 
-/// CapsLock 开关状态(由低级键盘钩子跟踪, 跨进程可靠)。
-static CAPS_ON: AtomicBool = AtomicBool::new(false);
-/// 去重键盘自动重复: 仅首次 keydown 切换 Caps 状态, keyup 解锁下一次切换
-static CAPS_HELD: AtomicBool = AtomicBool::new(false);
 /// 按键触发的立即显示请求(Shift/CapsLock 按下时置位, 下一次轮询立刻弹窗)。
+/// 注意: CapsLock 的开关状态**不存在这里** —— 那是钩子维护的副本, 会失步,
+/// 改为在 caps_state() 里实时问系统。
 static SHOW_HINT: AtomicBool = AtomicBool::new(false);
 const VK_LSHIFT: u32 = 0xA0;
 const VK_RSHIFT: u32 = 0xA1;
@@ -1340,13 +1369,10 @@ unsafe extern "system" fn ll_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT 
         let is_keydown = msg == 0x100 /*WM_KEYDOWN*/ || msg == 0x104 /*WM_SYSKEYDOWN*/;
         let is_keyup = msg == 0x101 /*WM_KEYUP*/ || msg == 0x105 /*WM_SYSKEYUP*/;
         if is_keydown && kb.vkCode == VK_CAPITAL as u32 {
-            if !CAPS_HELD.swap(true, Ordering::Relaxed) {
-                let on = CAPS_ON.fetch_xor(true, Ordering::Relaxed);
-                SHOW_HINT.store(true, Ordering::Relaxed);
-                dbg(&format!("caps down -> {}", !on));
-            }
-        } else if is_keyup && kb.vkCode == VK_CAPITAL as u32 {
-            CAPS_HELD.store(false, Ordering::Relaxed);
+            // 状态由 caps_state() 实时查询, 这里只负责触发弹窗。
+            // 自动重复的 keydown 会多次置位, 但 SHOW_HINT 本身就是幂等的。
+            SHOW_HINT.store(true, Ordering::Relaxed);
+            dbg("caps down");
         } else if is_keyup && (kb.vkCode == VK_LSHIFT || kb.vkCode == VK_RSHIFT) {
             // 中英切换在 Shift 抬起时才完成, 故在抬起时触发(避免显示旧状态)
             SHOW_HINT.store(true, Ordering::Relaxed);
@@ -1354,20 +1380,6 @@ unsafe extern "system" fn ll_hook(code: i32, wp: WPARAM, lp: LPARAM) -> LRESULT 
         }
     }
     CallNextHookEx(0, code, wp, lp)
-}
-
-unsafe fn init_caps() {
-    // 启动时用一次 AttachThreadInput+GetKeyState 取初始状态(随后由钩子维护)
-    let fg = GetForegroundWindow();
-    if fg != 0 {
-        let tid = GetWindowThreadProcessId(fg, std::ptr::null_mut());
-        let me = GetCurrentThreadId();
-        if tid != 0 && tid != me && AttachThreadInput(me, tid, 1) != 0 {
-            let r = GetKeyState(VK_CAPITAL as i32) & 1;
-            AttachThreadInput(me, tid, 0);
-            CAPS_ON.store(r != 0, Ordering::Relaxed);
-        }
-    }
 }
 
 unsafe extern "system" fn msg_wndproc(hwnd: isize, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
@@ -1483,8 +1495,7 @@ unsafe fn run(cfg: Arc<Mutex<Config>>) {
     if let Some(a) = APP.as_mut() { a.msg_hwnd = hwnd; a.timer_interval = interval; a.tray_add(); }
     SetTimer(hwnd, TIMER_POLL, interval.max(10), None);
 
-    // CapsLock: 安装低级键盘钩子跟踪(需消息循环, 已在本线程)
-    init_caps();
+    // CapsLock: 安装低级键盘钩子, 只用于“按下时立刻弹窗”; 开关状态实时向系统查询
     let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(ll_hook), hinst as HINSTANCE, 0);
     let _ = hook; // 钩子随线程/进程退出自动释放
 
