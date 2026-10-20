@@ -40,18 +40,9 @@ jobs:
         run: cargo run --release --bin tip-selftest
 
       - name: Verify PE icon resources
-        shell: pwsh
         run: |
           python -m pip install --quiet pefile
-          python - <<'PY'
-          import pefile, sys
-          pe = pefile.PE("tip-tauri/src-tauri/target/release/tip-tauri.exe")
-          ids = {t.id: [e.id for e in t.directory.entries] for t in pe.DIRECTORY_ENTRY_RESOURCE.entries}
-          assert 3 in ids, "RT_ICON missing"
-          assert 14 in ids, "RT_GROUP_ICON missing"
-          print("RT_ICON:", ids[3])
-          print("RT_GROUP_ICON:", ids[14])
-          PY
+          python tools/check_pe_icon.py tip-tauri/src-tauri/target/release/tip-tauri.exe
 
       - name: Stage green build
         shell: pwsh
