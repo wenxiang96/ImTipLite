@@ -188,7 +188,16 @@ pub fn run() {
     }
 
     migrate_legacy_config();
+    // 首次运行(没有任何配置文件): 落盘一份默认配置。
+    // 绿色软件用户可以直接编辑 exe 旁的 config.json 做预配置再启动;
+    // 不生成的话, 用户无从知道有哪些可调项、格式长什么样。
+    let first_run = !cfg_dir().join("config.json").exists();
     let cfg = Arc::new(Mutex::new(load_config()));
+    if first_run {
+        if let Ok(g) = cfg.lock() {
+            save_config(&g);
+        }
+    }
     let _ = CFG.set(cfg.clone());
 
     let _ = SHOW_SETTINGS.set(Box::new(show_settings));
