@@ -8,12 +8,17 @@ Tauri 2(设置界面) + Rust 原生 Win32/GDI+ 提示条。单实例运行。
 
 ## 直接使用(绿色版)
 
+从 [Releases](https://github.com/wenxiang96/ImTipLite/releases) 下载 zip, 解压即用:
+
 ```
-ImTipLite.exe        ← 双击运行(14 MB)
-WebView2Loader.dll   ← 必须与 exe 放在同一目录
+ImTipLite-vX.Y.Z-green.zip
+├── ImTipLite.exe
+└── WebView2Loader.dll   (必须与 exe 同目录)
 ```
 
-也可解压 `ImTipLite-green.zip`,或使用 `green\` 目录。
+**完全绿色便携**: 个人设置 `config.json` 保存 exe 同目录(不放 %APPDATA%、不写注册表),
+拷贝整个目录到任意位置/U 盘即带走全部状态。旧版本升级时自动把 %APPDATA% 里的
+配置迁移到 exe 目录, 不会丢设置。
 
 - **托盘左键单击** → 打开设置
 - **托盘右键** → 菜单(暂停 / 鼠标位置兜底 / 忽略全屏 / 打开设置 / 退出)
@@ -37,7 +42,7 @@ WebView2Loader.dll   ← 必须与 exe 放在同一目录
 - **字体为下拉选择**,选项实时枚举系统已安装字体(含用户级安装字体,自动过滤 @ 竖排变体)
 - 7 种颜色(背景/边框/中文/英文/标点/大写/半角)+ 7 个图标字符均可自定义
 - **透明背景**选项(只显示图标)
-- 修改实时生效并自动保存到 `%APPDATA%\ImTipLite\config.json`
+- 修改实时生效并自动保存到 exe 同目录 `config.json`(便携; exe 目录只读时回退 `%APPDATA%\ImTipLite`)
 
 ## 检测原理(与 ImTip / aardio `key.ime.state` 一致)
 

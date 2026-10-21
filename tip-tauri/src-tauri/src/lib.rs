@@ -10,11 +10,48 @@ use tip::{run_tip_thread, Config, SHOW_SETTINGS};
 static CFG: OnceLock<Arc<Mutex<Config>>> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 
+/// 便携模式目录(exe 所在目录)。写探测通过才启用, 结果进程内缓存。
+/// 探测失败(如 exe 放在 Program Files 等只读位置)时返回 None, 配置回退 %APPDATA%。
+static PORTABLE_DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+fn portable_dir() -> Option<PathBuf> {
+    PORTABLE_DIR
+        .get_or_init(|| {
+            let exe = std::env::current_exe().ok()?;
+            let dir = exe.parent()?.to_path_buf();
+            let probe = dir.join(".imtip_probe");
+            let writable = std::fs::write(&probe, b"").is_ok();
+            if writable {
+                let _ = std::fs::remove_file(&probe);
+            }
+            writable.then_some(dir)
+        })
+        .clone()
+}
+
+/// 配置目录: 优先 exe 同目录(绿色便携), 回退 %APPDATA%。
+/// 拷贝整个程序目录即可带走全部状态, 无注册表/无 AppData 残留。
 fn cfg_dir() -> PathBuf {
+    if let Some(d) = portable_dir() {
+        return d;
+    }
     let base = std::env::var("APPDATA").unwrap_or_else(|_| ".".into());
     let d = PathBuf::from(base).join("ImTipLite");
     let _ = std::fs::create_dir_all(&d);
     d
+}
+
+/// 旧版升级迁移: exe 旁还没有配置而 %APPDATA% 里有老配置时, 复制过来并删除原文件,
+/// 保证老用户设置(字体/颜色/字符)不丢、也不出现两份配置各改各的。
+fn migrate_legacy_config() {
+    let Some(dir) = portable_dir() else { return };
+    let local = dir.join("config.json");
+    if local.exists() { return; }
+    let Ok(base) = std::env::var("APPDATA") else { return };
+    let legacy = PathBuf::from(base).join("ImTipLite").join("config.json");
+    if legacy.exists() && std::fs::copy(&legacy, &local).is_ok() {
+        let _ = std::fs::remove_file(&legacy);
+    }
 }
 
 fn load_config() -> Config {
@@ -150,6 +187,7 @@ pub fn run() {
         }
     }
 
+    migrate_legacy_config();
     let cfg = Arc::new(Mutex::new(load_config()));
     let _ = CFG.set(cfg.clone());
 
