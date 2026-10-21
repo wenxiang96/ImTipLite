@@ -75,8 +75,6 @@ jobs:
           name: ImTipLite-win-x64
           path: dist/*
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
+      # Release 资产改为手动上传(tools/publish 流程):
+      # CI 产物(MSVC 工具链)与本地发布产物(GNU 工具链 + WebView2Loader.dll)
+      # 不同, 自动附加会互相覆盖。此处保留 artifact 供 CI 验证与排查用。
