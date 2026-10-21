@@ -67,7 +67,9 @@ fn set_config(mut cfg: Config) -> Config {
     cfg.height = cfg.height.clamp(16, 90);
     cfg.radius = cfg.radius.clamp(0, 45);
     cfg.border_width = cfg.border_width.clamp(0, 8);
-    if cfg.font_name.trim().is_empty() {
+    // 字体: 去掉首尾空白; 空则回退默认; GDI 的 LOGFONT.lfFaceName 上限 32 字符
+    cfg.font_name = cfg.font_name.trim().to_string();
+    if cfg.font_name.is_empty() {
         cfg.font_name = "Microsoft YaHei UI".into();
     }
     if cfg.font_name.chars().count() > 31 {
@@ -105,6 +107,12 @@ fn set_autostart(enabled: bool) -> bool {
     unsafe { tip::set_autostart(enabled) }
 }
 
+/// 本机已安装的字体族名(设置页字体下拉用)
+#[tauri::command]
+fn list_fonts() -> Vec<String> {
+    unsafe { tip::list_system_fonts() }
+}
+
 #[tauri::command]
 fn tip_preview(cfg: Config) -> Vec<String> {
     // 用传入的配置离屏渲染示例提示条(与真实提示条同一光栅化代码)
@@ -130,6 +138,10 @@ fn toggle_pause() -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 静默启动: 开机自启(注册表项带 --silent 参数)时不弹设置窗口, 只在后台跑提示核心。
+    // 用户手动双击 exe / 托盘打开时正常显示。
+    let silent = std::env::args().nth(1).map(|a| a == "--silent").unwrap_or(false);
+
     // 单实例:已有一个实例在运行时,本次启动只把它的设置窗口唤到前面,然后退出。
     unsafe {
         if !tip::try_acquire_single_instance() {
@@ -148,7 +160,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_config, set_config, reset_config, toggle_pause, tip_preview,
-            get_autostart, set_autostart
+            get_autostart, set_autostart, list_fonts
         ])
         .setup({
             let cfg = cfg.clone();
@@ -156,6 +168,13 @@ pub fn run() {
                 let _ = APP_HANDLE.set(app.handle().clone());
                 // 启动原生提示核心(工作线程)
                 run_tip_thread(cfg);
+                // tauri.conf.json 里 visible=false(静默启动); 手动启动时在这里显示。
+                if !silent {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.show();
+                        let _ = w.set_focus();
+                    }
+                }
                 // 关闭设置窗口只是隐藏: 提示核心继续常驻, 双击托盘/exe 可重新打开
                 if let Some(w) = app.get_webview_window("main") {
                     let hide_target = w.clone();

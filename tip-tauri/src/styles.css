@@ -53,8 +53,12 @@ body { font:13px/1.45 "Microsoft YaHei UI","Segoe UI",sans-serif; overflow:auto;
 input[type="range"] { appearance:none; -webkit-appearance:none; display:block; width:100%; height:4px; margin:0; border-radius:8px; background:#e1e5ee; outline:none; cursor:pointer; }
 input[type="range"]::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:13px; height:13px; border:2px solid white; border-radius:50%; background:var(--accent); box-shadow:0 1px 4px #4058bd55; }
 .font-row { display:flex; align-items:center; gap:9px; padding-top:8px; margin-top:5px; border-top:1px solid #f0f2f6; color:#586276; font-size:11px; }
-.font-row input { min-width:0; flex:1; height:27px; padding:3px 8px; border:1px solid #dfe4ec; border-radius:7px; background:#fafbfc; color:#364057; font:inherit; outline:none; }
-.font-row input:focus,.char-grid input:focus { border-color:#9eacec; box-shadow:0 0 0 2px #eef1ff; }
+.font-row input, .font-row select { min-width:0; flex:1; height:27px; padding:3px 8px; border:1px solid #dfe4ec; border-radius:7px; background:#fafbfc; color:#364057; font:inherit; outline:none; }
+.font-row select { cursor:pointer; padding-right:26px; appearance:none; -webkit-appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%237a8497' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 9px center; }
+.font-row select:hover { border-color:#c6cfdd; }
+.font-row input:focus,.font-row select:focus,.char-grid input:focus { border-color:#9eacec; box-shadow:0 0 0 2px #eef1ff; }
 
 .color-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px 7px; }
 .color-item { display:flex; align-items:center; gap:6px; min-width:0; color:#626d80; font-size:10px; white-space:nowrap; cursor:pointer; }

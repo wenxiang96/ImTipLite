@@ -892,8 +892,9 @@ pub unsafe fn set_autostart(on: bool) -> bool {
     let h = match open_run_key(KEY_QUERY_VALUE | KEY_SET_VALUE) { Some(h) => h, None => return false };
     let name = wstr(AUTOSTART_NAME);
     let ok = if on {
-        // 注册表命令: "C:\path\ImTipLite.exe"
-        let cmd: Vec<u16> = format!("\"{}\"", exe_path())
+        // 注册表命令: "C:\path\ImTipLite.exe" --silent
+        // --silent: 开机自启时不弹设置窗口, 只在后台运行提示核心
+        let cmd: Vec<u16> = format!("\"{}\" --silent", exe_path())
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
@@ -906,6 +907,58 @@ pub unsafe fn set_autostart(on: bool) -> bool {
     };
     RegCloseKey(h);
     ok
+}
+
+// ---- 系统字体枚举(设置页字体下拉用) ----
+
+/// `EnumFontFamiliesExW` 回调: 收集字体族名。
+///
+/// windows-sys 0.52 的 `FONTENUMPROCW` 签名是 (LOGFONTW, TEXTMETRICW, u32, LPARAM),
+/// 与 C 头文件里的 ENUMLOGFONTEXW 不同, 按这里的签名实现即可。
+unsafe extern "system" fn enum_font_proc(
+    lplf: *const LOGFONTW,
+    _lpntm: *const TEXTMETRICW,
+    _font_type: u32,
+    lparam: LPARAM,
+) -> i32 {
+    if lplf.is_null() || lparam == 0 { return 1; }
+    let out = &mut *(lparam as *mut Vec<String>);
+    let face = &(*lplf).lfFaceName;
+    // 跳过以 @ 开头的竖排字体(族名与横排相同, 选了会变成竖排文字)
+    if face[0] == 0x40 /* '@' */ { return 1; }
+    let len = face.iter().position(|&c| c == 0).unwrap_or(face.len());
+    if len > 0 {
+        let name = String::from_utf16_lossy(&face[..len]);
+        let name = name.trim().to_string();
+        if !name.is_empty() && !out.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
+            out.push(name);
+        }
+    }
+    1 // 非 0 = 继续枚举
+}
+
+/// 枚举本机已安装的字体族名(去重、去 @ 竖排变体、按名称排序)。
+pub unsafe fn list_system_fonts() -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let hdc = GetDC(0);
+    if hdc == 0 { return out; }
+
+    let mut lf: LOGFONTW = std::mem::zeroed();
+    lf.lfCharSet = DEFAULT_CHARSET as u8;
+    lf.lfFaceName[0] = 0; // 空字符串 = 枚举所有字体族
+    lf.lfPitchAndFamily = 0;
+
+    EnumFontFamiliesExW(
+        hdc,
+        &lf,
+        Some(enum_font_proc),
+        &mut out as *mut Vec<String> as LPARAM,
+        0,
+    );
+    ReleaseDC(0, hdc);
+
+    out.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+    out
 }
 
 // ---- 提示条光栅化(实际提示条与设置页预览共用, 保证外观完全一致) ----

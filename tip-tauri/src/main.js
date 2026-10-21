@@ -13,11 +13,14 @@ const sliders = {
   radius: ["radius_v", "int"],
   border_width: ["border_width_v", "int"],
 };
-const texts = ["font_name"];
+const texts = [];
+const FONT_SELECT_ID = "font_name";
+const DEFAULT_FONT = "Microsoft YaHei UI";
 const colors = ["color_bg", "color_border", "color_cn", "color_en", "color_full", "color_half", "color_caps"];
 const chars = ["char_cn", "char_en", "char_full", "char_half", "char_caps", "char_other"];
 const previewIds = ["pv_full", "pv_half", "pv_caps"];
 
+let loaded = false;   // loadSettings 完成前, 不响应任何保存/预览
 let saveTimer = 0;
 let previewTimer = 0;
 let previewRevision = 0;
@@ -31,6 +34,11 @@ function gather() {
     cfg[k] = type === "float" ? Number.parseFloat(value) : Number.parseInt(value, 10);
   }
   for (const k of texts) cfg[k] = document.getElementById(k).value;
+  // 字体下拉可能尚未填充(loadSettings 里异步 invoke 期间): 此时不能把空字符串写回配置,
+  // 否则会覆盖用户已保存的字体(表现为"打开设置后字体被重置为默认")。
+  const fontEl = document.getElementById(FONT_SELECT_ID);
+  const fontVal = fontEl ? fontEl.value : "";
+  if (fontVal) cfg[FONT_SELECT_ID] = fontVal;
   for (const k of colors) cfg[k] = document.getElementById(k).value;
   for (const k of chars) cfg[k] = document.getElementById(k).value;
   return cfg;
@@ -42,6 +50,7 @@ function updateSliderLabel(key, value) {
 }
 
 function schedulePreview() {
+  if (!loaded) return;
   clearTimeout(previewTimer);
   const revision = ++previewRevision;
   previewTimer = setTimeout(async () => {
@@ -60,6 +69,7 @@ function schedulePreview() {
 }
 
 function scheduleSave() {
+  if (!loaded) return;
   const status = document.getElementById("saved");
   status.textContent = "保存中…";
   clearTimeout(saveTimer);
@@ -75,6 +85,53 @@ function scheduleSave() {
       console.error("设置保存失败", error);
     }
   }, 220);
+}
+
+// 用系统已安装字体填充下拉框。找不到当前配置的字体时临时补一项, 避免显示空白。
+async function populateFonts(current) {
+  const sel = document.getElementById(FONT_SELECT_ID);
+  if (!sel) return;
+  let fonts = [];
+  try {
+    fonts = await invoke("list_fonts");
+  } catch (error) {
+    console.error("读取系统字体失败", error);
+  }
+  if (!Array.isArray(fonts) || fonts.length === 0) {
+    // 后端枚举失败: 至少保留当前值, 不让下拉框空着
+    fonts = current ? [current] : [DEFAULT_FONT];
+  }
+  // 常用字体排在最前, 其余按名称排序(后端已排序)
+  const preferred = [DEFAULT_FONT, "微软雅黑", "SimHei", "SimSun", "KaiTi", "Segoe UI", "Consolas", "Arial"];
+  const head = preferred.filter((f) => fonts.some((x) => x.toLowerCase() === f.toLowerCase()));
+  const headSet = new Set(head.map((f) => f.toLowerCase()));
+  const tail = fonts.filter((f) => !headSet.has(f.toLowerCase()));
+
+  sel.innerHTML = "";
+  const addGroup = (label, items) => {
+    if (!items.length) return;
+    const group = document.createElement("optgroup");
+    group.label = label;
+    for (const name of items) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      group.appendChild(opt);
+    }
+    sel.appendChild(group);
+  };
+  addGroup("常用", head);
+  addGroup("全部字体", tail);
+
+  // 当前配置的字体若不在列表里, 补一项并选中(例如刚卸载过的字体)
+  const want = current || DEFAULT_FONT;
+  if (!Array.from(sel.options).some((o) => o.value.toLowerCase() === want.toLowerCase())) {
+    const opt = document.createElement("option");
+    opt.value = want;
+    opt.textContent = `${want} (未安装)`;
+    sel.insertBefore(opt, sel.firstChild);
+  }
+  sel.value = Array.from(sel.options).find((o) => o.value.toLowerCase() === want.toLowerCase()).value;
 }
 
 function bindSettings() {
@@ -97,6 +154,7 @@ function bindSettings() {
   for (const key of texts) {
     document.getElementById(key)?.addEventListener("input", onChange(key));
   }
+  document.getElementById(FONT_SELECT_ID)?.addEventListener("change", onChange(FONT_SELECT_ID));
   for (const key of colors) {
     document.getElementById(key)?.addEventListener("input", onChange(key, true));
   }
@@ -121,6 +179,8 @@ async function loadSettings() {
     const el = document.getElementById(key);
     if (el) el.value = cfg[key];
   }
+  await populateFonts(cfg[FONT_SELECT_ID]);
+  loaded = true;   // 字体下拉填充完毕, 之后才允许回写
   for (const key of colors) {
     const el = document.getElementById(key);
     if (el) el.value = String(cfg[key]).toLowerCase();
@@ -168,6 +228,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   bindAutostart();
   document.getElementById("reset")?.addEventListener("click", async () => {
     try {
+      loaded = false;
       await invoke("reset_config");
       await loadSettings();
       document.getElementById("saved").textContent = "已恢复默认设置";
